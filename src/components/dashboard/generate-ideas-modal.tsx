@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { Trend, ContentIdea, Platform } from '@/lib/types';
 import {
   Dialog,
@@ -13,11 +13,13 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { generateContentIdeas } from '@/ai/flows/generate-content-ideas';
+import { getIdeas, saveIdeas } from '@/lib/firestore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sparkles, Plus } from 'lucide-react';
 import { Icons } from '../icons';
 import { CustomizeCaptionModal } from './customize-caption-modal';
 import { useContentQueue } from '@/context/content-queue-context';
+import { useToast } from '@/hooks/use-toast';
 
 interface GenerateIdeasModalProps {
   trend: Trend;
@@ -29,15 +31,29 @@ export function GenerateIdeasModal({ trend, children }: GenerateIdeasModalProps)
   const [ideas, setIdeas] = useState<ContentIdea[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const { addToQueue } = useContentQueue();
+  const { toast } = useToast();
 
-  const handleGenerate = async () => {
+  const handleFetchOrGenerateIdeas = async () => {
     setIsLoading(true);
     setIdeas([]);
     try {
-      const result = await generateContentIdeas({ trend: trend.title });
-      setIdeas(result.contentIdeas);
+      // Check firestore for existing ideas
+      const existingIdeas = await getIdeas(trend.id);
+      if (existingIdeas.length > 0) {
+        setIdeas(existingIdeas);
+      } else {
+        // If no ideas, generate new ones
+        const result = await generateContentIdeas({ trend: trend.title });
+        await saveIdeas(trend.id, trend.title, result.contentIdeas);
+        setIdeas(result.contentIdeas);
+      }
     } catch (error) {
-      console.error("Failed to generate content ideas:", error);
+      console.error("Failed to get or generate content ideas:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load ideas. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -46,7 +62,7 @@ export function GenerateIdeasModal({ trend, children }: GenerateIdeasModalProps)
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
     if (open) {
-      handleGenerate();
+      handleFetchOrGenerateIdeas();
     } else {
       setIdeas([]);
     }
