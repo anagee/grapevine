@@ -1,3 +1,4 @@
+export { db } from "./firebase";
 import { db } from './firebase';
 import { collection, addDoc, getDocs, query, where } from 'firebase/firestore';
 import type { ContentIdea } from './types';
@@ -36,3 +37,4 @@ export const getIdeas = async (trendId: string): Promise<ContentIdea[]> => {
     return [];
   }
 };
+

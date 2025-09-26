@@ -1,144 +1,103 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import type { Trend, ContentIdea, Platform } from '@/lib/types';
+import * as React from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-  DialogFooter
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { generateContentIdeas } from '@/ai/flows/generate-content-ideas';
-import { getIdeas, saveIdeas } from '@/lib/firestore';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Sparkles, Plus } from 'lucide-react';
-import { Icons } from '../icons';
-import { CustomizeCaptionModal } from './customize-caption-modal';
-import { useContentQueue } from '@/context/content-queue-context';
-import { useToast } from '@/hooks/use-toast';
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Loader2, Sparkles } from "lucide-react";
+import type { Trend } from "@/lib/types";
 
-interface GenerateIdeasModalProps {
+type Props = {
   trend: Trend;
-  children: React.ReactNode;
-}
+  children?: React.ReactNode; // the trigger button (we pass it from the card)
+};
 
-export function GenerateIdeasModal({ trend, children }: GenerateIdeasModalProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [ideas, setIdeas] = useState<ContentIdea[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const { addToQueue } = useContentQueue();
-  const { toast } = useToast();
+export function GenerateIdeasModal({ trend, children }: Props) {
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [ideas, setIdeas] = React.useState<string[]>([]);
+  const [error, setError] = React.useState<string | null>(null);
 
-  const handleFetchOrGenerateIdeas = async () => {
-    setIsLoading(true);
-    setIdeas([]);
+  async function fetchIdeas() {
     try {
-      // Check firestore for existing ideas
-      const existingIdeas = await getIdeas(trend.id);
-      if (existingIdeas.length > 0) {
-        setIdeas(existingIdeas);
-      } else {
-        // If no ideas, generate new ones
-        const result = await generateContentIdeas({ trend: trend.title });
-        await saveIdeas(trend.id, trend.title, result.contentIdeas);
-        setIdeas(result.contentIdeas);
-      }
-    } catch (error) {
-      console.error("Failed to get or generate content ideas:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load ideas. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    if (open) {
-      handleFetchOrGenerateIdeas();
-    } else {
+      setLoading(true);
+      setError(null);
       setIdeas([]);
+
+      const res = await fetch("/api/ideas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: trend.platform,
+          title: trend.title,
+          description: trend.description,
+          hashtagOrTopic: (trend as any).hashtagOrTopic,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      setIdeas(Array.isArray(data?.ideas) ? data.ideas : []);
+    } catch (e: any) {
+      setError("Could not generate ideas. Please try again.");
+    } finally {
+      setLoading(false);
     }
-  };
-  
-  const handleAddToQueue = (idea: ContentIdea) => {
-    addToQueue({
-      trendTitle: trend.title,
-      platform: idea.platform as Platform,
-      idea: idea.idea,
-      caption: '', // Caption will be generated later
-      scheduledTime: null,
-    });
   }
 
+  // When the modal opens, load ideas once
+  React.useEffect(() => {
+    if (open) void fetchIdeas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children ?? <Button>Generate</Button>}</DialogTrigger>
+
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle className="font-headline text-2xl flex items-center gap-2">
-            <Sparkles className="text-accent w-6 h-6" /> Content Ideas
-          </DialogTitle>
-          <DialogDescription>
-            AI-generated ideas for the trend: "{trend.title}"
-          </DialogDescription>
+          <DialogTitle>Content ideas for “{trend.title}”</DialogTitle>
         </DialogHeader>
-        <div className="py-4 space-y-6">
-          {isLoading && (
-            <>
-              <IdeaSkeleton />
-              <IdeaSkeleton />
-              <IdeaSkeleton />
-            </>
+
+        <div className="min-h-[140px]">
+          {loading && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating ideas…
+            </div>
           )}
-          {ideas.map((idea, index) => {
-            const PlatformIcon = Icons[idea.platform];
-            return (
-              <div key={index} className="p-4 bg-muted/50 rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <PlatformIcon className="w-5 h-5 text-muted-foreground" />
-                  <h3 className="font-bold capitalize">{idea.platform}</h3>
-                </div>
-                <p className="text-foreground">{idea.idea}</p>
-                <div className="mt-4 flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => handleAddToQueue(idea)}>
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add to Queue
-                    </Button>
-                    <CustomizeCaptionModal trendName={trend.title} platform={idea.platform}>
-                        <Button variant="secondary" size="sm">Customize Caption</Button>
-                    </CustomizeCaptionModal>
-                </div>
-              </div>
-            );
-          })}
+
+          {!loading && error && (
+            <div className="text-sm text-red-600">{error}</div>
+          )}
+
+          {!loading && !error && ideas.length > 0 && (
+            <ul className="list-disc pl-5 space-y-2">
+              {ideas.map((idea, i) => (
+                <li key={i} className="text-sm leading-snug">
+                  {idea}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => setIsOpen(false)}>Close</Button>
+
+        <DialogFooter className="flex items-center justify-between gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Close
+          </Button>
+          <Button onClick={fetchIdeas} disabled={loading}>
+            <Sparkles className="mr-2 h-4 w-4" />
+            Regenerate
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
-
-const IdeaSkeleton = () => (
-    <div className="p-4 bg-muted/50 rounded-lg">
-        <div className="flex items-center gap-2 mb-2">
-            <Skeleton className="w-5 h-5 rounded-full" />
-            <Skeleton className="h-5 w-24" />
-        </div>
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-3/4 mt-2" />
-        <div className="mt-4 flex gap-2">
-            <Skeleton className="h-9 w-32" />
-            <Skeleton className="h-9 w-36" />
-        </div>
-    </div>
-)
