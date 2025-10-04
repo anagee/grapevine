@@ -1,6 +1,6 @@
 // src/app/api/providers/youtube/route.ts
 import { NextResponse } from "next/server";
-import { fetchYouTubeTrends } from "@/providers/youtube";
+import { fetchYouTubeTrends } from "../../../../providers/youtube";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
