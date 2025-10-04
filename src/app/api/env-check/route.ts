@@ -10,3 +10,15 @@ export async function GET() {
     geminiKeyPresent: !!process.env.GEMINI_API_KEY,
   });
 }
+import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    YOUTUBE_API_KEY: Boolean(process.env.YOUTUBE_API_KEY),
+  });
+}
